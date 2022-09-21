@@ -5,7 +5,8 @@ use crate::api::{MatchData, MatchDataRequest, Matches, Summoner};
 use reqwest::header::HeaderMap;
 use tokio::time::{sleep, Duration};
 
-fn construct_headers(api_key: &str) -> HeaderMap {
+fn construct_headers(api_key: &str) -> HeaderMap 
+{
     // Construct HeaderMap for making a request to Riot League of Legends Summoner API
     let mut headers = HeaderMap::new();
     headers.insert("Accept", "application/json".parse().unwrap());
@@ -13,7 +14,8 @@ fn construct_headers(api_key: &str) -> HeaderMap {
     return headers;
 }
 
-fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String, Box<dyn std::error::Error>>
+{
     // Construct Summoner
     let summoner = Summoner {
         headers: &headers,
@@ -25,7 +27,8 @@ fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String,
     Ok(puuid)
 }
 
-fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> 
+{
     // Construct Matches
     let matches = Matches {
         headers: &headers,
@@ -41,10 +44,8 @@ fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>,
     Ok(matches)
 }
 
-fn get_match_data(
-    headers: &HeaderMap,
-    matches: Vec<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<dyn std::error::Error>> 
+{
     // Construct MatchData
     let match_data = MatchData {
         headers: &headers,
@@ -84,7 +85,8 @@ fn get_match_data(
 
 //fn load_to_mongo()
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>>
+{
     // Capture program start time
     let start = Instant::now();
 
@@ -93,8 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let headers: HeaderMap = construct_headers(&api_key);
 
     // Create unique summoner_url from user's summoner entry
-    let mut summoner_url: String =
-        String::from("https://na1.api.riotgames.com/lol/summoner/v4/summoners/by-name/");
+    let mut summoner_url: String = String::from("https://na1.api.riotgames.com/lol/summoner/v4/summoners/by-name/");
     let summoner: &str = "Epoetin Alfa"; // Will receive from user args in later version
     summoner_url.push_str(summoner);
 
