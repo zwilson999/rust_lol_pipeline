@@ -1,9 +1,10 @@
 use std::fs;
 use std::time::Instant;
 mod api;
-use crate::api::{MatchData, MatchDataRequest, Matches, Summoner};
+use crate::api::{MatchData, Matches, Summoner};
 use reqwest::header::HeaderMap;
 use tokio::time::{sleep, Duration};
+use futures::{stream, StreamExt};
 
 fn construct_headers(api_key: &str) -> HeaderMap 
 {
@@ -53,37 +54,85 @@ fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<d
     };
 
     // Prepare request URLs
-    let match_data_requests: Vec<MatchDataRequest> = match_data.prepare().unwrap();
+    let match_data_requests: Vec<String> = match_data.prepare().unwrap();
+
+    // Build runtime before making async requests
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
 
     // Make requests
-    //let match_data: Vec<MatchDataResponse> = _make_match_requests(headers, &match_data_requests).unwrap();
+    rt.block_on(_make_match_requests(&headers, &match_data_requests));
+    Ok(())
 
+}
+
+async fn _make_match_requests(headers: &HeaderMap, match_requests: &Vec<String>) -> Result<(), Box<dyn std::error::Error>>
+{
+    // Create async request client to be re-used by reference
+    let client = reqwest::Client::new();
+    
+    // Construct async requests
+    let bodies = stream::iter(match_requests)
+        .map(|url| {
+            let client = &client;
+            async move {  
+                _fetch(client, headers, &url).await
+            }
+        })
+        .buffer_unordered(20);
+
+    bodies.for_each(|b| async
+        {
+            match b 
+            {
+                Ok(b) => println!("Got {} bytes", b.len()),
+                Err(e) => eprintln!("Got an error: {}", e),
+            }
+        })
+        .await;
     Ok(())
 }
 
-//async fn _make_match_requests(headers: &HeaderMap, match_requests: &Vec<MatchDataRequest>) -> Result<Vec<MatchDataResponse>, Box<dyn std::error:Error>>
-//{
-//    let mut tasks: Vec<JoinHandle<Result<(), ()>>>= vec![];
-//    let client = reqwest::Client::new();
-//    for req in match_requests
-//    {
-//        tasks.push(tokio:spawn(async move {
-//            match reqwest::get(&req).await {
-//                Ok(resp) => {
-//                    match resp.text().await {
-//                        Ok(text) => {
-//                            println!("Response
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//    }
-//}
+async fn _fetch(client: &reqwest::Client, headers: &HeaderMap, match_request: &String) -> Result<String, Box<dyn std::error::Error>>
+{
 
-//async fn _fetch(headers: &HeaderMap, request: MatchDataRequest)
+    let resp = client.get(match_request)
+                     .headers(headers.to_owned())
+                     .send()
+                     .await?;
+    // Sleep 1s asynchronously
+    sleep(Duration::from_secs(1)).await;
 
-//fn load_to_mongo()
+    // If we hit rate limit, wait 2 minutes and retry
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+    {
+        let wait = resp.headers().get("Retry-After")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        println!("Waiting for {:?}", wait);
+        sleep(Duration::from_secs(wait)).await;
+
+        // Retry
+        let resp = client.get(match_request)
+                         .headers(headers.to_owned())
+                         .send()
+                         .await?;
+        let txt = resp.text().await?;
+        println!("{}", txt);
+        Ok(txt)
+    }
+    else
+    {
+        let txt = resp.text().await?;
+        println!("{}", txt);
+        Ok(txt)
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>>
 {
@@ -113,3 +162,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>>
     println!("Elapsed: {:.2?}", start.elapsed());
     Ok(())
 }
+

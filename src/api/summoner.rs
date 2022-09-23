@@ -1,6 +1,6 @@
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
-
+ 
 #[derive(Deserialize)]
 struct Puuid 
 {
