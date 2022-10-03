@@ -24,7 +24,8 @@ fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String,
     };
 
     // Get puuid which will be used to send requests for a specific summoner ID
-    let puuid: String = summoner.get_puuid().unwrap();
+    let puuid: String = summoner.get_puuid()
+                                .unwrap();
     Ok(puuid)
 }
 
@@ -40,7 +41,8 @@ fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>,
         queue: 400,
     };
 
-    let matches: Vec<String> = matches.get_matches().unwrap();
+    let matches: Vec<String> = matches.get_matches()
+                                      .unwrap();
 
     Ok(matches)
 }
@@ -54,7 +56,8 @@ fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<d
     };
 
     // Prepare request URLs
-    let match_data_requests: Vec<String> = match_data.prepare().unwrap();
+    let match_data_requests: Vec<String> = match_data.prepare()
+                                                     .unwrap();
 
     // Build runtime before making async requests
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -70,7 +73,7 @@ fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<d
 
 async fn _make_match_requests(headers: &HeaderMap, match_requests: &Vec<String>) -> Result<(), Box<dyn std::error::Error>>
 {
-    // Create async request client to be re-used by reference
+    // Create async request client to be re-used
     let client = reqwest::Client::new();
     
     // Construct async requests
@@ -108,6 +111,7 @@ async fn _fetch(client: &reqwest::Client, headers: &HeaderMap, match_request: &S
     // If we hit rate limit, wait 2 minutes and retry
     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
     {
+        // Retrieve how long we need to wait before retrying the request
         let wait = resp.headers().get("Retry-After")
             .unwrap()
             .to_str()
@@ -115,6 +119,8 @@ async fn _fetch(client: &reqwest::Client, headers: &HeaderMap, match_request: &S
             .parse::<u64>()
             .unwrap();
         println!("Waiting for {:?}", wait);
+
+        // Sleep for wait seconds
         sleep(Duration::from_secs(wait)).await;
 
         // Retry
