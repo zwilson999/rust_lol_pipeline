@@ -1,13 +1,13 @@
 use std::fs;
 use std::time::Instant;
 mod api;
-use crate::api::{MatchData, Matches, Summoner};
+use crate::api::{MatchData, Matches, Summoner, Match};
 use reqwest::header::HeaderMap;
 use tokio::time::{sleep, Duration};
 use futures::{stream, StreamExt};
 
-fn construct_headers(api_key: &str) -> HeaderMap 
-{
+fn construct_headers(api_key: &str) -> HeaderMap {
+    
     // Construct HeaderMap for making a request to Riot League of Legends Summoner API
     let mut headers = HeaderMap::new();
     headers.insert("Accept", "application/json".parse().unwrap());
@@ -15,9 +15,9 @@ fn construct_headers(api_key: &str) -> HeaderMap
     return headers;
 }
 
-fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String, Box<dyn std::error::Error>>
-{
-    // Construct Summoner
+fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String, Box<dyn std::error::Error>> {
+
+    // Construct Summoner and headers needed for summoner request
     let summoner = Summoner {
         headers: &headers,
         url: &summoner_url,
@@ -29,8 +29,8 @@ fn get_summoner_puuid(headers: &HeaderMap, summoner_url: &str) -> Result<String,
     Ok(puuid)
 }
 
-fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> 
-{
+fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    
     // Construct Matches
     let matches = Matches {
         headers: &headers,
@@ -40,15 +40,14 @@ fn get_summoner_matches(headers: &HeaderMap, puuid: &str) -> Result<Vec<String>,
         ),
         queue: 400,
     };
-
-    let matches: Vec<String> = matches.get_matches()
-                                      .unwrap();
-
+    let matches: Vec<String> = matches
+        .get_matches()
+        .unwrap();
     Ok(matches)
 }
 
-fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<dyn std::error::Error>> 
-{
+fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+
     // Construct MatchData
     let match_data = MatchData {
         headers: &headers,
@@ -56,8 +55,7 @@ fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<d
     };
 
     // Prepare request URLs
-    let match_data_requests: Vec<String> = match_data.prepare()
-                                                     .unwrap();
+    let match_data_requests: Vec<String> = match_data.prepare().unwrap();
 
     // Build runtime before making async requests
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -65,54 +63,56 @@ fn get_match_data(headers: &HeaderMap, matches: Vec<String>) -> Result<(), Box<d
         .build()
         .unwrap();
 
-    // Make requests
-    rt.block_on(_make_match_requests(&headers, &match_data_requests));
+    // Make async requests
+    rt.block_on(make_match_requests(&headers, &match_data_requests)).unwrap();
     Ok(())
-
 }
 
-async fn _make_match_requests(headers: &HeaderMap, match_requests: &Vec<String>) -> Result<(), Box<dyn std::error::Error>>
-{
+async fn make_match_requests(headers: &HeaderMap, match_requests: &Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+
     // Create async request client to be re-used
     let client = reqwest::Client::new();
-    
+        
     // Construct async requests
     let bodies = stream::iter(match_requests)
         .map(|url| {
             let client = &client;
             async move {  
-                _fetch(client, headers, &url).await
+                fetch(client, headers, &url).await
             }
         })
         .buffer_unordered(20);
 
-    bodies.for_each(|b| async
-        {
-            match b 
-            {
-                Ok(b) => println!("Got {} bytes", b.len()),
-                Err(e) => eprintln!("Got an error: {}", e),
-            }
-        })
-        .await;
+    // Check out our response bodies
+    bodies.for_each(|b| async {
+        match b {
+            Ok(b) => println!("{:?}", b),
+            Err(e) => eprintln!("Got an error: {}", e),
+        }
+    })
+    .await;
+
     Ok(())
 }
 
-async fn _fetch(client: &reqwest::Client, headers: &HeaderMap, match_request: &String) -> Result<String, Box<dyn std::error::Error>>
-{
+async fn fetch(client: &reqwest::Client, headers: &HeaderMap, match_request: &String) -> Result<Match, Box<dyn std::error::Error>> {
 
+    // Make initial request
     let resp = client.get(match_request)
-                     .headers(headers.to_owned())
-                     .send()
-                     .await?;
-    // Sleep 1s asynchronously
+         .headers(headers.to_owned())
+         .send()
+         .await?;
+
+    // Sleep 1s asynchronously to avoid rate limit of 20 requests/s
     sleep(Duration::from_secs(1)).await;
 
     // If we hit rate limit, wait 2 minutes and retry
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
-    {
+    while resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+
         // Retrieve how long we need to wait before retrying the request
-        let wait = resp.headers().get("Retry-After")
+        let wait = resp
+            .headers()
+            .get("Retry-After")
             .unwrap()
             .to_str()
             .unwrap()
@@ -123,25 +123,29 @@ async fn _fetch(client: &reqwest::Client, headers: &HeaderMap, match_request: &S
         // Sleep for wait seconds
         sleep(Duration::from_secs(wait)).await;
 
-        // Retry
-        let resp = client.get(match_request)
-                         .headers(headers.to_owned())
-                         .send()
-                         .await?;
+        // Retry the request
+        let resp = client
+            .get(match_request)
+            .headers(headers.to_owned())
+            .send()
+            .await?;
+        // Resolve the text response 
         let txt = resp.text().await?;
-        println!("{}", txt);
-        Ok(txt)
-    }
-    else
-    {
-        let txt = resp.text().await?;
-        println!("{}", txt);
-        Ok(txt)
-    }
+        let data = serde_json::from_str::<Match>(&txt)?; 
+        println!("{:?}", data);
+        return Ok(data);
+    } 
+
+    // Resolve the text response if data isn't a 429 (too many requests) 
+    let txt = resp.text().await?;
+    let data = serde_json::from_str::<Match>(&txt)?; 
+    println!("{:?}", data);
+    Ok(data)
+    
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>>
-{
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
     // Capture program start time
     let start = Instant::now();
 
@@ -165,7 +169,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>
     let matches: Vec<String> = get_summoner_matches(&headers, &puuid).unwrap();
 
     get_match_data(&headers, matches).unwrap();
+
+    // Print runtime of program
     println!("Elapsed: {:.2?}", start.elapsed());
     Ok(())
 }
-
