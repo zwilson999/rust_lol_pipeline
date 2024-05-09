@@ -1,3 +1,4 @@
 /target
 /creds
 *.swp
+/src/archive
