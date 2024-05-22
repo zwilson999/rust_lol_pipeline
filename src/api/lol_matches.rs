@@ -1,6 +1,7 @@
 use anyhow::{Error, Result};
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Deserialize, Debug)]
 pub struct MatchesResponse {
@@ -15,7 +16,7 @@ pub struct Match {
 #[derive(Serialize, Debug)]
 pub struct Query<'b> {
     #[serde(rename(serialize = "startTime"))]
-    pub start_time: u64,
+    pub start_time: Option<u64>,
     #[serde(rename(serialize = "endTime"))]
     pub end_time: u64,
     #[serde(rename(serialize = "queue"))]
@@ -26,6 +27,56 @@ pub struct Query<'b> {
     pub start_idx: u16,
     #[serde(rename(serialize = "count"))]
     pub page_size: u16,
+}
+
+impl<'b> Default for Query<'b> {
+    fn default() -> Self {
+        Self {
+            start_time: None,
+            end_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_else(|err| {
+                    println!("ERROR: could not get SYSTEM_TIME since UNIX_EPOCH: {err}");
+                    std::process::exit(1);
+                })
+                .as_secs(),
+            queue_id: 400, // default to draft
+            r#type: "normal",
+            start_idx: 0,
+            page_size: 100,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl<'b> Query<'b> {
+    pub fn new(
+        start_time: Option<u64>,
+        end_time: Option<u64>,
+        queue_id: u16,
+        r#type: &'b str,
+        start_idx: u16,
+        page_size: u16,
+    ) -> Self {
+        let mut qry = Query::default();
+
+        // check for start and end time values
+        if let Some(start_time) = start_time {
+            qry.start_time = Some(start_time);
+        }
+        if let Some(end_time) = end_time {
+            qry.end_time = end_time;
+        }
+
+        // fill the struct with non-default options
+        Query {
+            queue_id,
+            r#type,
+            start_idx,
+            page_size,
+            ..qry
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -42,14 +93,7 @@ impl<'b> Default for MatchesRequest<'b> {
         Self {
             headers: reqwest::header::HeaderMap::new(),
             puuid: "",
-            query: Query {
-                start_time: 1420070400,
-                end_time: 1715034812,
-                queue_id: 400, // default to draft
-                r#type: "normal",
-                start_idx: 0,
-                page_size: 100,
-            },
+            query: Query::default(),
             matches: vec![].into_iter(),
             client: reqwest::blocking::Client::new(),
         }
@@ -61,10 +105,9 @@ impl<'b> MatchesRequest<'b> {
     pub fn new(
         headers: HeaderMap,
         puuid: &'b str,
-        start_time: u64,
-        end_time: u64,
-        // The queue type for matches, draft = 400, blind = 430, ARAM = 450
-        queue_id: u16,
+        start_time: Option<u64>,
+        end_time: Option<u64>,
+        queue_id: u16, // The queue type for matches, draft = 400, blind = 430, ARAM = 450
         r#type: &'b str,
         start_idx: u16,
         page_size: u16,
@@ -72,14 +115,7 @@ impl<'b> MatchesRequest<'b> {
         Self {
             headers,
             puuid,
-            query: Query {
-                start_time,
-                end_time,
-                queue_id,
-                r#type,
-                start_idx,
-                page_size,
-            },
+            query: Query::new(start_time, end_time, queue_id, r#type, start_idx, page_size),
             matches: Default::default(),
             client: Default::default(),
         }
@@ -87,8 +123,8 @@ impl<'b> MatchesRequest<'b> {
 
     fn try_next(&mut self) -> Result<Option<String>, Error> {
         // see if there are any results from our matches requests
-        if let Some(s) = self.matches.next() {
-            return Ok(Some(s));
+        if let Some(m) = self.matches.next() {
+            return Ok(Some(m));
         }
 
         // format url

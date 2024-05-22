@@ -1,12 +1,12 @@
 use reqwest::header::HeaderMap;
 
 #[derive(Debug)]
-pub struct MatchData<'a> {
+pub struct MatchRequest<'a> {
     pub headers: &'a HeaderMap,
     pub matches: Vec<String>,
 }
 
-impl<'a> MatchData<'a> {
+impl<'a> MatchRequest<'a> {
     pub fn prepare(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Construct a vector of Match Data Requests
         let match_data_requests: Vec<String> = self

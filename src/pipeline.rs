@@ -1,12 +1,12 @@
 #![allow(dead_code)]
-// use crate::api::lol_summoner::Summoner;
-use crate::api::lol_matches::{MatchesRequest, Query};
+use crate::api::lol_matches::MatchesRequest;
 use crate::api::lol_riot_account::RiotAccount;
 use crate::api::request::AccountInfoRequest;
 use crate::config::Config;
 use anyhow::{Error, Result};
 use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 pub struct Pipeline /*<'a>*/ {
@@ -34,11 +34,8 @@ impl Pipeline {
             std::process::exit(1);
         });
 
-        // TODO turn this into an iterator that creates batches of matches (100 at a time)
-        // into their own channel
+        // get all matches for the account
         self.get_matches(account_info.puuid)?;
-        // let matches: Vec<String> = self.get_matches(account_info.puuid)?;
-        // println!("INFO: found {} matches!", matches.len());
         Ok(())
     }
 
@@ -59,13 +56,10 @@ impl Pipeline {
 
     fn get_account_info(&self) -> Result<RiotAccount, Error> {
         // url to get the riot account info with access token
-        let url = reqwest::Url::parse(
-            format!(
-                "https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
-                self.config.game_name, self.config.tag_line
-            )
-            .as_str(),
-        )?;
+        let url = format!(
+            "https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
+            self.config.game_name, self.config.tag_line
+        );
 
         let req = AccountInfoRequest {
             api_key: &self.config.api_key,
@@ -92,26 +86,21 @@ impl Pipeline {
     }
 
     fn get_matches(&self, puuid: String) -> Result<(), Error> {
-        // we will adjust the query while consuming all match ids from the API
-        let matches_req = MatchesRequest {
-            headers: self.create_headers(),
-            puuid: &puuid,
-            query: Query {
-                start_time: 1420070400,
-                end_time: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
-                queue_id: 400,
-                r#type: "normal",
-                start_idx: 0,
-                page_size: 100,
-            },
-            ..Default::default()
-        };
+        // receive all matches of the below types for the given puuid
+        let matches = MatchesRequest::new(
+            self.create_headers(),
+            &puuid,
+            self.config.start_time,
+            self.config.end_time,
+            400,
+            "normal",
+            0,
+            100,
+        );
 
-        let mut i = 0;
-        for _m in matches_req {
-            i += 1;
-        }
-        println!("{} matches found", i);
+        // create channel which will consume matches as they arrive
+        let (tx, mut rx) = mpsc::channel(100);
+        for m in matches {}
 
         Ok(())
     }

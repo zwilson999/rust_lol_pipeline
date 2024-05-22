@@ -5,6 +5,7 @@ mod pipeline;
 use anyhow::{Error, Result};
 use config::Config;
 use pipeline::Pipeline;
+use std::env;
 use std::time::Instant;
 // use futures::{stream, StreamExt};
 // use postgres::NoTls;
@@ -177,9 +178,13 @@ use std::time::Instant;
 fn main() -> Result<(), Error> {
     let start = Instant::now();
 
+    // get user args and parse them
+    // let args: Vec<String> = env::args().collect();
+    // TODO: validate user args
+
     // prepare pipeline configuration from file
     let creds_path: &str = "creds/creds.json";
-    let config = Config::build(creds_path).unwrap_or_else(|err| {
+    let config = Config::build(creds_path, None, None).unwrap_or_else(|err| {
         eprintln!("ERROR: could not build configuration from credential path {creds_path}, {err}");
         std::process::exit(1);
     });
@@ -188,17 +193,6 @@ fn main() -> Result<(), Error> {
     let pipeline = Pipeline::new(config);
     pipeline.run()?;
 
-    // // Can set queue types from user args later
-    // //let queue_type: u16 = 400;
-    //
-    // // Get Summoner's Puuid
-    // let puuid: String = get_summoner_puuid(&headers, &summoner_url).unwrap();
-    // println!("Puuid: {}", puuid);
-    //
-    // // Get Summoner's Matches
-    // let matches: Vec<String> = get_summoner_matches(&headers, &puuid).unwrap();
-    //
-    // get_match_data(&headers, matches).unwrap();
     println!("INFO: Program finished in: {:.2?}", start.elapsed());
     Ok(())
 }
