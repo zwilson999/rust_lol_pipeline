@@ -1,10 +1,8 @@
 #![allow(dead_code)]
 use crate::api::lol_matches::MatchesRequest;
-use crate::api::lol_riot_account::RiotAccount;
-use crate::api::request::AccountInfoRequest;
+use crate::api::lol_riot_account::{AccountInfoRequest, RiotAccount};
 use crate::config::Config;
 use anyhow::{Error, Result};
-use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
 use std::time::Instant;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -39,34 +37,12 @@ impl Pipeline {
         Ok(())
     }
 
-    fn create_headers(&self) -> HeaderMap {
-        // headers for the API call
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT, "application/json".parse().unwrap());
-        headers.insert(
-            ACCEPT_CHARSET,
-            "application/x-www-form-urlencoded; charset=UTF-8"
-                .parse()
-                .unwrap(),
-        );
-        headers.insert(ACCEPT_LANGUAGE, "en-US,en;q=0.5".parse().unwrap());
-        headers.insert("X-Riot-Token", self.config.api_key.parse().unwrap());
-        headers
-    }
-
     fn get_account_info(&self) -> Result<RiotAccount, Error> {
-        // url to get the riot account info with access token
-        let url = format!(
-            "https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
-            self.config.game_name, self.config.tag_line
+        let req = AccountInfoRequest::new(
+            &self.config.api_key,
+            &self.config.game_name,
+            &self.config.tag_line,
         );
-
-        let req = AccountInfoRequest {
-            api_key: &self.config.api_key,
-            url: url.as_str(),
-            headers: self.create_headers(),
-            ..Default::default()
-        };
 
         // make a request to get account information
         let start = Instant::now();
@@ -88,7 +64,7 @@ impl Pipeline {
     fn get_matches(&self, puuid: String) -> Result<(), Error> {
         // receive all matches of the below types for the given puuid
         let matches = MatchesRequest::new(
-            self.create_headers(),
+            &self.config.api_key,
             &puuid,
             self.config.start_time,
             self.config.end_time,
@@ -99,8 +75,10 @@ impl Pipeline {
         );
 
         // create channel which will consume matches as they arrive
-        let (tx, mut rx) = mpsc::channel(100);
-        for m in matches {}
+        // let (tx, mut rx) = mpsc::channel(100);
+        for m in matches {
+            println!("{:?}", m);
+        }
 
         Ok(())
     }

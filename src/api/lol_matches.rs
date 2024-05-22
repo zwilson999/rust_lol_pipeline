@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,7 +14,7 @@ pub struct Match {
 }
 
 #[derive(Serialize, Debug)]
-pub struct Query<'b> {
+pub struct MatchesQuery<'b> {
     #[serde(rename(serialize = "startTime"))]
     pub start_time: Option<u64>,
     #[serde(rename(serialize = "endTime"))]
@@ -29,7 +29,7 @@ pub struct Query<'b> {
     pub page_size: u16,
 }
 
-impl<'b> Default for Query<'b> {
+impl<'b> Default for MatchesQuery<'b> {
     fn default() -> Self {
         Self {
             start_time: None,
@@ -49,7 +49,7 @@ impl<'b> Default for Query<'b> {
 }
 
 #[allow(dead_code)]
-impl<'b> Query<'b> {
+impl<'b> MatchesQuery<'b> {
     pub fn new(
         start_time: Option<u64>,
         end_time: Option<u64>,
@@ -58,7 +58,7 @@ impl<'b> Query<'b> {
         start_idx: u16,
         page_size: u16,
     ) -> Self {
-        let mut qry = Query::default();
+        let mut qry = MatchesQuery::default();
 
         // check for start and end time values
         if let Some(start_time) = start_time {
@@ -69,7 +69,7 @@ impl<'b> Query<'b> {
         }
 
         // fill the struct with non-default options
-        Query {
+        MatchesQuery {
             queue_id,
             r#type,
             start_idx,
@@ -81,9 +81,9 @@ impl<'b> Query<'b> {
 
 #[derive(Debug)]
 pub struct MatchesRequest<'b> {
-    pub headers: HeaderMap,
+    pub api_key: &'b str,
     pub puuid: &'b str,
-    pub query: Query<'b>,
+    pub query: MatchesQuery<'b>,
     pub matches: <Vec<String> as IntoIterator>::IntoIter,
     pub client: reqwest::blocking::Client,
 }
@@ -91,9 +91,9 @@ pub struct MatchesRequest<'b> {
 impl<'b> Default for MatchesRequest<'b> {
     fn default() -> Self {
         Self {
-            headers: reqwest::header::HeaderMap::new(),
+            api_key: "",
             puuid: "",
-            query: Query::default(),
+            query: MatchesQuery::default(),
             matches: vec![].into_iter(),
             client: reqwest::blocking::Client::new(),
         }
@@ -103,7 +103,7 @@ impl<'b> Default for MatchesRequest<'b> {
 #[allow(dead_code)]
 impl<'b> MatchesRequest<'b> {
     pub fn new(
-        headers: HeaderMap,
+        api_key: &'b str,
         puuid: &'b str,
         start_time: Option<u64>,
         end_time: Option<u64>,
@@ -113,12 +113,27 @@ impl<'b> MatchesRequest<'b> {
         page_size: u16,
     ) -> Self {
         Self {
-            headers,
+            api_key,
             puuid,
-            query: Query::new(start_time, end_time, queue_id, r#type, start_idx, page_size),
+            query: MatchesQuery::new(start_time, end_time, queue_id, r#type, start_idx, page_size),
             matches: Default::default(),
             client: Default::default(),
         }
+    }
+
+    fn create_headers(&self) -> HeaderMap {
+        // headers for the API call
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, "application/json".parse().unwrap());
+        headers.insert(
+            ACCEPT_CHARSET,
+            "application/x-www-form-urlencoded; charset=UTF-8"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(ACCEPT_LANGUAGE, "en-US,en;q=0.5".parse().unwrap());
+        headers.insert("X-Riot-Token", self.api_key.parse().unwrap());
+        headers
     }
 
     fn try_next(&mut self) -> Result<Option<String>, Error> {
@@ -136,7 +151,7 @@ impl<'b> MatchesRequest<'b> {
         let resp = self
             .client
             .get(&url)
-            .headers(self.headers.clone())
+            .headers(self.create_headers())
             .query(&self.query)
             .send()?
             .json::<Vec<String>>()?; // ::<MatchesResponse>()?;
@@ -167,7 +182,7 @@ impl<'b> Iterator for MatchesRequest<'b> {
 // use serde::Serialize;
 
 // #[derive(Serialize, Debug)]
-// struct Query {
+// struct MatchesQuery {
 //     queue: u16,
 //     start: usize,
 //     count: u16,
@@ -188,7 +203,7 @@ impl<'b> Iterator for MatchesRequest<'b> {
 //         let mut matches: Vec<String> = Vec::new();
 //         for idx in (0..NUM_MATCHES_TO_SEARCH).step_by(100) {
 //             // Create dynamic query per request
-//             let qry: Query = Query {
+//             let qry: MatchesQuery = MatchesQuery {
 //                 queue: self.queue,
 //                 start: idx, // Index of where to search in match results
 //                 count: 100, // How many matches to search at once

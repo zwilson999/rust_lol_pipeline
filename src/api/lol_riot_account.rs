@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -13,49 +13,44 @@ pub struct RiotAccount {
 #[derive(Debug)]
 pub struct AccountInfoRequest<'b> {
     pub api_key: &'b str,
-    pub url: &'b str,
-    pub headers: HeaderMap,
     pub game_name: &'b str,
     pub tag_line: &'b str,
-    pub puuid: &'b str,
-}
-
-impl<'b> Default for AccountInfoRequest<'b> {
-    fn default() -> Self {
-        Self {
-            api_key: "",
-            url: "",
-            headers: HeaderMap::new(),
-            game_name: "",
-            tag_line: "NA1",
-            puuid: "",
-        }
-    }
 }
 
 #[allow(dead_code)]
 impl<'b> AccountInfoRequest<'b> {
-    pub fn new(
-        api_key: &'b str,
-        url: &'b str,
-        headers: Option<HeaderMap>,
-        game_name: Option<&'b str>,
-        tagline: Option<&'b str>,
-        puuid: Option<&'b str>,
-    ) -> Self {
+    pub fn new(api_key: &'b str, game_name: &'b str, tag_line: &'b str) -> Self {
         Self {
             api_key,
-            url,
-            headers: headers.unwrap_or_default(),
-            game_name: game_name.unwrap_or_default(),
-            tag_line: tagline.unwrap_or_default(),
-            puuid: puuid.unwrap_or_default(),
+            game_name,
+            tag_line,
         }
     }
 
+    fn create_headers(&self) -> HeaderMap {
+        // headers for the API call
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, "application/json".parse().unwrap());
+        headers.insert(
+            ACCEPT_CHARSET,
+            "application/x-www-form-urlencoded; charset=UTF-8"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(ACCEPT_LANGUAGE, "en-US,en;q=0.5".parse().unwrap());
+        headers.insert("X-Riot-Token", self.api_key.parse().unwrap());
+        headers
+    }
+
     pub fn get_blocking(&self) -> Result<reqwest::blocking::Response, Error> {
+        // url to get the riot account info with access token
+        let url = format!(
+            "https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
+            self.game_name, self.tag_line
+        );
+
         let client = reqwest::blocking::Client::new();
-        let resp = client.get(self.url).headers(self.headers.clone()).send()?;
+        let resp = client.get(url).headers(self.create_headers()).send()?;
 
         // check status and return appropriate response
         match resp.status() {
