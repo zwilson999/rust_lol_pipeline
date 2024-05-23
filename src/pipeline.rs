@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use crate::api::lol_match_data::MatchRequest;
+use crate::api::lol_match_info::MatchResponse;
 use crate::api::lol_matches::MatchesRequest;
 use crate::api::lol_riot_account::{AccountInfoRequest, RiotAccount};
 use crate::config::Config;
@@ -33,7 +35,7 @@ impl Pipeline {
         });
 
         // get all matches for the account
-        self.get_matches(account_info.puuid)?;
+        self.get_matches(account_info.puuid);
         Ok(())
     }
 
@@ -61,7 +63,7 @@ impl Pipeline {
         Ok(data)
     }
 
-    fn get_matches(&self, puuid: String) -> Result<(), Error> {
+    async fn get_matches(&self, puuid: String) -> Result<(), Error> {
         // receive all matches of the below types for the given puuid
         let matches = MatchesRequest::new(
             &self.config.api_key,
@@ -75,10 +77,29 @@ impl Pipeline {
         );
 
         // create channel which will consume matches as they arrive
-        // let (tx, mut rx) = mpsc::channel(100);
-        for m in matches {
-            println!("{:?}", m);
+        let (tx, mut rx) = mpsc::channel(100);
+        for match_id in matches {
+            match match_id {
+                Ok(m) => {
+                    let tx_cloned = tx.clone();
+                    let api_key = self.config.api_key.to_owned();
+                    let req = MatchRequest::new(api_key, m, tx_cloned);
+
+                    // make an async  match request
+                    tokio::spawn(async move {
+                        if let Ok(resp) = req.get_async().await {
+                            println!("{:?}", resp)
+                        }
+                    });
+                }
+                Err(e) => {
+                    println!("ERROR: could not receive match id from matches request: {e}");
+                }
+            };
         }
+
+        // read from channel and write to database as data is received
+        while let Some(resp) = rx.recv().await {}
 
         Ok(())
     }

@@ -1,32 +1,25 @@
+use anyhow::{Error, Result};
 use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
-pub struct MatchRequest<'c> {
-    pub api_key: &'c str,
-    pub url: &'c str,
-    pub match_id: &'c str,
+pub struct MatchRequest {
+    api_key: String,
+    match_id: String,
+    sender: mpsc::Sender<reqwest::Response>,
 }
 
-impl<'c> Default for MatchRequest<'c> {
-    fn default() -> Self {
-        Self {
-            api_key: "",
-            url: "",
-            match_id: "",
-        }
-    }
-}
-
-impl<'c> MatchRequest<'c> {
-    pub fn new(api_key: &'c str, url: &'c str, match_id: &'c str) -> Self {
+#[allow(dead_code)]
+impl MatchRequest {
+    pub fn new(api_key: String, match_id: String, tx: mpsc::Sender<reqwest::Response>) -> Self {
         Self {
             api_key,
-            url,
             match_id,
+            sender: tx,
         }
     }
 
-    fn create_headers(self) -> HeaderMap {
+    fn create_headers(&self) -> HeaderMap {
         // headers for the API call
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, "application/json".parse().unwrap());
@@ -40,25 +33,40 @@ impl<'c> MatchRequest<'c> {
         headers.insert("X-Riot-Token", self.api_key.parse().unwrap());
         headers
     }
-    /*
-    pub fn prepare(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        // Construct a vector of Match Data Requests
-        let match_data_requests: Vec<String> = self
-            .matches
-            .iter()
-            .map(|x| {
-                format!(
-                    "https://americas.api.riotgames.com/lol/match/v5/matches/{m}",
-                    m = x
-                )
-            })
-            .collect();
 
-        println!(
-            "There are: {} match requests to make..",
-            match_data_requests.len()
+    pub async fn get_async(&self) -> Result<reqwest::Response, Error> {
+        // create async http client
+        let client = reqwest::Client::new();
+        let url = format!(
+            "https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}",
+            match_id = self.match_id
         );
-        Ok(match_data_requests)
+        let resp = client
+            .get(url)
+            .headers(self.create_headers())
+            .send()
+            .await?;
+
+        // check status and return appropriate response
+        match resp.status() {
+            reqwest::StatusCode::OK => {
+                return Ok(resp);
+            }
+            reqwest::StatusCode::BAD_REQUEST => {
+                let err = format!("bad status. status code: {}", resp.status());
+                return Err(anyhow::anyhow!(err));
+            }
+            reqwest::StatusCode::FORBIDDEN => {
+                let err = format!(
+                    "forbidden request. check credentials. status code: {}",
+                    resp.status()
+                );
+                return Err(anyhow::anyhow!(err));
+            }
+            _ => {
+                let err = format!("unsavory request. status code: {}", resp.status());
+                return Err(anyhow::anyhow!(err));
+            }
+        };
     }
-    */
 }

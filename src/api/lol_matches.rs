@@ -137,7 +137,10 @@ impl<'b> MatchesRequest<'b> {
     }
 
     fn try_next(&mut self) -> Result<Option<String>, Error> {
-        // see if there are any results from our matches requests
+        // see if there are any results from our matches response
+        // each response will be a Vec<String> which
+        // this condition will check values from.
+        // if there are no values left, it will make another request (below)
         if let Some(m) = self.matches.next() {
             return Ok(Some(m));
         }
