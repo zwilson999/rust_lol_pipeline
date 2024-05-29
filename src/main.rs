@@ -3,10 +3,11 @@ mod config;
 mod pipeline;
 
 use anyhow::{Error, Result};
-use config::Config;
+use clap::Parser;
+use config::{get_api_keys, Config};
 use pipeline::Pipeline;
-use std::env;
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 // use futures::{stream, StreamExt};
 // use postgres::NoTls;
 // use reqwest::header::HeaderMap;
@@ -175,24 +176,45 @@ use std::time::Instant;
 //     Ok(data)
 // }
 
+// run query and deserialize it into a struct
+
+#[derive(Parser)]
+struct Args {
+    #[arg(short, long)]
+    user: String,
+    #[arg(short, long)]
+    pwd: String,
+    #[arg(short, long)]
+    summoner: String,
+    #[arg(long, default_value_t = 1338253148)]
+    start: u64,
+    #[arg(long, default_value_t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())]
+    end: u64,
+}
+
 fn main() -> Result<(), Error> {
     let start = Instant::now();
+    let args = Args::parse();
 
-    // get user args and parse them
-    // let args: Vec<String> = env::args().collect();
-    // TODO: validate user args
+    // get api keys from db
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let account_info = get_api_keys(&args.user, &args.pwd, &args.summoner)
+            .await
+            .unwrap_or_else(|err| {
+                eprintln!("ERROR: could not obtain credentials from db... check user args. {err}");
+                std::process::exit(1);
+            });
+        println!("{:?}", account_info);
 
-    // prepare pipeline configuration from file
-    let creds_path: &str = "creds/creds.json";
-    let config = Config::build(creds_path, None, None).unwrap_or_else(|err| {
-        eprintln!("ERROR: could not build configuration from credential path {creds_path}, {err}");
-        std::process::exit(1);
+        let config = Config::build(account_info, args.start, args.end);
+
+        // create pipeline and run it
+        // let pipeline = Pipeline::new(config);
+        // pipeline.run();
+
+        println!("INFO: Program finished in: {:.2?}", start.elapsed());
     });
 
-    // create pipeline and run it
-    let pipeline = Pipeline::new(config);
-    pipeline.run()?;
-
-    println!("INFO: Program finished in: {:.2?}", start.elapsed());
     Ok(())
 }

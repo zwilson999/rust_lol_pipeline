@@ -1,32 +1,64 @@
 #![allow(dead_code)]
 
-use anyhow::{Error, Result};
-use serde::Deserialize;
-use std::fs;
+use clap::Parser;
+use sqlx::{Connection, PgConnection};
 
-#[derive(Deserialize, Debug)]
-pub struct Config {
-    pub api_key: String,
+#[derive(Parser)]
+struct Args {
+    #[arg(short, long)]
+    user: String,
+    #[arg(short, long)]
+    pwd: String,
+    #[arg(short, long)]
+    summoner: String,
+    #[arg(long)]
+    start: String,
+    #[arg(long)]
+    end: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct Account {
     pub game_name: String,
+    pub api_key: String,
     pub tag_line: String,
-    pub start_time: Option<u64>,
-    pub end_time: Option<u64>,
+}
+
+pub async fn get_api_keys(user: &str, pwd: &str, summoner: &str) -> Result<Account, sqlx::Error> {
+    let conn_string = format!(
+        "postgresql://{user}:{pwd}@localhost/league_of_legends",
+        user = user,
+        pwd = pwd
+    );
+    let mut conn = PgConnection::connect(&conn_string).await?;
+
+    let account_info = sqlx::query_as::<_, Account>(
+        r#"
+        SELECT game_name, api_key, tag_line 
+        FROM league_of_legends.public.league_accounts
+        WHERE game_name = $1;
+        "#,
+    )
+    .bind(summoner)
+    .fetch_one(&mut conn)
+    .await?;
+
+    Ok(account_info)
+}
+
+#[derive(Debug)]
+pub struct Config {
+    pub account: Account,
+    pub start: u64,
+    pub end: u64,
 }
 
 impl Config {
-    pub fn build(
-        file_path: &str,
-        start_time: Option<u64>,
-        end_time: Option<u64>,
-    ) -> Result<Config, Error> {
-        // read in config json and
-        // construct headers from an external file or location (possibly provided by user)
-        let text: String = fs::read_to_string(file_path)?.parse()?;
-        let mut config: Config = serde_json::from_str(&text)?;
-
-        // append start_time and end_time parameters from the user if provided
-        config.start_time = start_time;
-        config.end_time = end_time;
-        Ok(config)
+    pub fn build(account: Account, start: u64, end: u64) -> Self {
+        Self {
+            account,
+            start,
+            end,
+        }
     }
 }

@@ -16,7 +16,7 @@ pub struct Match {
 #[derive(Serialize, Debug)]
 pub struct MatchesQuery<'b> {
     #[serde(rename(serialize = "startTime"))]
-    pub start_time: Option<u64>,
+    pub start_time: u64,
     #[serde(rename(serialize = "endTime"))]
     pub end_time: u64,
     #[serde(rename(serialize = "queue"))]
@@ -32,7 +32,7 @@ pub struct MatchesQuery<'b> {
 impl<'b> Default for MatchesQuery<'b> {
     fn default() -> Self {
         Self {
-            start_time: None,
+            start_time: 1338253148,
             end_time: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_else(|err| {
@@ -51,22 +51,14 @@ impl<'b> Default for MatchesQuery<'b> {
 #[allow(dead_code)]
 impl<'b> MatchesQuery<'b> {
     pub fn new(
-        start_time: Option<u64>,
-        end_time: Option<u64>,
+        start_time: u64,
+        end_time: u64,
         queue_id: u16,
         r#type: &'b str,
         start_idx: u16,
         page_size: u16,
     ) -> Self {
         let mut qry = MatchesQuery::default();
-
-        // check for start and end time values
-        if let Some(start_time) = start_time {
-            qry.start_time = Some(start_time);
-        }
-        if let Some(end_time) = end_time {
-            qry.end_time = end_time;
-        }
 
         // fill the struct with non-default options
         MatchesQuery {
@@ -105,8 +97,8 @@ impl<'b> MatchesRequest<'b> {
     pub fn new(
         api_key: &'b str,
         puuid: &'b str,
-        start_time: Option<u64>,
-        end_time: Option<u64>,
+        start_time: u64,
+        end_time: u64,
         queue_id: u16, // The queue type for matches, draft = 400, blind = 430, ARAM = 450
         r#type: &'b str,
         start_idx: u16,

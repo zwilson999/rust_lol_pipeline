@@ -29,21 +29,22 @@ impl Pipeline {
             .get_account_info()
             .unwrap_or_else(|err| { eprintln!(
                 "ERROR: could not get account info for riot game name {} and tagline {}, exiting due to {} ",
-                self.config.game_name, self.config.tag_line, err
+                self.config.account.game_name, self.config.account.tag_line, err
             );
             std::process::exit(1);
         });
 
         // get all matches for the account
-        self.get_matches(account_info.puuid);
+        let _ = self.get_matches(account_info.puuid);
+
         Ok(())
     }
 
     fn get_account_info(&self) -> Result<RiotAccount, Error> {
         let req = AccountInfoRequest::new(
-            &self.config.api_key,
-            &self.config.game_name,
-            &self.config.tag_line,
+            &self.config.account.api_key,
+            &self.config.account.game_name,
+            &self.config.account.tag_line,
         );
 
         // make a request to get account information
@@ -66,10 +67,10 @@ impl Pipeline {
     async fn get_matches(&self, puuid: String) -> Result<(), Error> {
         // receive all matches of the below types for the given puuid
         let matches = MatchesRequest::new(
-            &self.config.api_key,
+            &self.config.account.api_key,
             &puuid,
-            self.config.start_time,
-            self.config.end_time,
+            self.config.start,
+            self.config.end,
             400,
             "normal",
             0,
@@ -82,14 +83,12 @@ impl Pipeline {
             match match_id {
                 Ok(m) => {
                     let tx_cloned = tx.clone();
-                    let api_key = self.config.api_key.to_owned();
+                    let api_key = self.config.account.api_key.to_owned();
                     let req = MatchRequest::new(api_key, m, tx_cloned);
 
                     // make an async  match request
                     tokio::spawn(async move {
-                        if let Ok(resp) = req.get_async().await {
-                            println!("{:?}", resp)
-                        }
+                        let _ = req.get_async().await;
                     });
                 }
                 Err(e) => {
@@ -98,8 +97,19 @@ impl Pipeline {
             };
         }
 
+        // create async runtime
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
         // read from channel and write to database as data is received
-        while let Some(resp) = rx.recv().await {}
+        // note we will block on this until we are finished
+        rt.block_on(async move {
+            while let Some(resp) = rx.recv().await {
+                println!("{:?}", resp);
+            }
+        });
 
         Ok(())
     }
