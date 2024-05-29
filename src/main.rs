@@ -4,10 +4,9 @@ mod pipeline;
 
 use anyhow::{Error, Result};
 use clap::Parser;
-use config::{get_api_keys, Config};
+use config::{Config, UserArgs};
 use pipeline::Pipeline;
 use std::time::Instant;
-use std::time::{SystemTime, UNIX_EPOCH};
 // use futures::{stream, StreamExt};
 // use postgres::NoTls;
 // use reqwest::header::HeaderMap;
@@ -178,43 +177,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 // run query and deserialize it into a struct
 
-#[derive(Parser)]
-struct Args {
-    #[arg(short, long)]
-    user: String,
-    #[arg(short, long)]
-    pwd: String,
-    #[arg(short, long)]
-    summoner: String,
-    #[arg(long, default_value_t = 1338253148)]
-    start: u64,
-    #[arg(long, default_value_t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())]
-    end: u64,
-}
-
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let start = Instant::now();
-    let args = Args::parse();
+    let args = UserArgs::parse();
 
-    // get api keys from db
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        let account_info = get_api_keys(&args.user, &args.pwd, &args.summoner)
-            .await
-            .unwrap_or_else(|err| {
-                eprintln!("ERROR: could not obtain credentials from db... check user args. {err}");
-                std::process::exit(1);
-            });
-        println!("{:?}", account_info);
+    let config = Config::build(args);
+    let account = config.get_api_key().await?;
 
-        let config = Config::build(account_info, args.start, args.end);
+    // create pipeline and run it
+    let pipeline = Pipeline::new(config, account);
+    pipeline.run().await?;
 
-        // create pipeline and run it
-        // let pipeline = Pipeline::new(config);
-        // pipeline.run();
-
-        println!("INFO: Program finished in: {:.2?}", start.elapsed());
-    });
+    println!("INFO: Program finished in: {:.2?}", start.elapsed());
 
     Ok(())
 }

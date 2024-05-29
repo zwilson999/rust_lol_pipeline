@@ -3,7 +3,7 @@ use crate::api::lol_match_data::MatchRequest;
 use crate::api::lol_match_info::MatchResponse;
 use crate::api::lol_matches::MatchesRequest;
 use crate::api::lol_riot_account::{AccountInfoRequest, RiotAccount};
-use crate::config::Config;
+use crate::config::{Account, Config};
 use anyhow::{Error, Result};
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -11,31 +11,38 @@ use uuid::Uuid;
 
 pub struct Pipeline /*<'a>*/ {
     pub config: Config,
+    pub account: Account,
     pub load_id: Uuid,
 }
 
 impl Pipeline {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, account: Account) -> Self {
         Self {
             config,
+            account,
             load_id: Uuid::new_v4(),
         }
     }
 
-    pub fn run(self) -> Result<(), Error> {
-        // start by getting our summoner information so we can use the data to make
-        // further api calls
-        let account_info = self
-            .get_account_info()
-            .unwrap_or_else(|err| { eprintln!(
-                "ERROR: could not get account info for riot game name {} and tagline {}, exiting due to {} ",
-                self.config.account.game_name, self.config.account.tag_line, err
-            );
-            std::process::exit(1);
+    pub async fn run(self) -> Result<(), Error> {
+        // create a runtime since we need some elements of the pipeline to be synchronous
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        // get information for the account we received api key for
+        let account_info = rt.block_on(async {
+            self.get_account_info()
+                .unwrap_or_else(|err| { eprintln!(
+                    "ERROR: could not get account info for riot game name {} and tagline {}, exiting due to {} ",
+                    self.config.account.game_name, self.config.account.tag_line, err
+                );
+                std::process::exit(1);
+            })
         });
 
+        println!("{:?}", account_info);
+
         // get all matches for the account
-        let _ = self.get_matches(account_info.puuid);
+        // let _ = self.get_matches(account_info.puuid).await;
 
         Ok(())
     }
