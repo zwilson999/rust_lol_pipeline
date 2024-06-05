@@ -1,56 +1,37 @@
+use crate::api::lol_match_info::MatchResponse;
 use anyhow::{Error, Result};
-use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
-use tokio::sync::mpsc;
+use reqwest::header::HeaderMap;
 
 #[derive(Debug)]
 pub struct MatchRequest {
-    api_key: String,
     match_id: String,
-    sender: mpsc::Sender<reqwest::Response>,
 }
 
 #[allow(dead_code)]
 impl MatchRequest {
-    pub fn new(api_key: String, match_id: String, tx: mpsc::Sender<reqwest::Response>) -> Self {
-        Self {
-            api_key,
-            match_id,
-            sender: tx,
-        }
+    pub fn new(match_id: String) -> Self {
+        Self { match_id }
     }
 
-    fn create_headers(&self) -> HeaderMap {
-        // headers for the API call
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT, "application/json".parse().unwrap());
-        headers.insert(
-            ACCEPT_CHARSET,
-            "application/x-www-form-urlencoded; charset=UTF-8"
-                .parse()
-                .unwrap(),
-        );
-        headers.insert(ACCEPT_LANGUAGE, "en-US,en;q=0.5".parse().unwrap());
-        headers.insert("X-Riot-Token", self.api_key.parse().unwrap());
-        headers
-    }
-
-    pub async fn get_async(&self) -> Result<reqwest::Response, Error> {
-        // create async http client
-        let client = reqwest::Client::new();
+    pub async fn get(
+        self,
+        client: reqwest::Client,
+        headers: HeaderMap,
+    ) -> Result<MatchResponse, Error> {
         let url = format!(
             "https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}",
             match_id = self.match_id
         );
-        let resp = client
-            .get(url)
-            .headers(self.create_headers())
-            .send()
-            .await?;
+        let resp = client.get(url).headers(headers).send().await?;
 
         // check status and return appropriate response
         match resp.status() {
             reqwest::StatusCode::OK => {
-                return Ok(resp);
+                let data = resp.json::<MatchResponse>().await.unwrap_or_else(|err| {
+                    println!("match: {} had errors", &self.match_id);
+                    panic!("{err}");
+                });
+                return Ok(data);
             }
             reqwest::StatusCode::BAD_REQUEST => {
                 let err = format!("bad status. status code: {}", resp.status());
@@ -61,6 +42,10 @@ impl MatchRequest {
                     "forbidden request. check credentials. status code: {}",
                     resp.status()
                 );
+                return Err(anyhow::anyhow!(err));
+            }
+            reqwest::StatusCode::TOO_MANY_REQUESTS => {
+                let err = format!("too many requests. status code: {}", resp.status());
                 return Err(anyhow::anyhow!(err));
             }
             _ => {

@@ -15,7 +15,10 @@ pub struct UserArgs {
     pub start: u64,
     #[arg(long, default_value_t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())]
     pub end: u64,
-    #[arg(short, long, default_value_t = String::from("localhost"))]
+    #[arg(short, long, default_value_t = 400)]
+    // The queue type for matches, draft = 400, blind = 430, ARAM = 450
+    pub queue_id: u16,
+    #[arg(long, default_value_t = String::from("localhost"))]
     pub host: String,
     #[arg(short, long, default_value_t = 5432)]
     pub port: u16,
@@ -23,20 +26,20 @@ pub struct UserArgs {
     pub db: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub user: String,
     pub pwd: String,
-    pub summoner: String,
     pub pg_host: String,
     pub pg_port: u16,
     pub pg_db: String,
+    pub summoner: String,
+    pub queue_id: u16,
     pub start: u64,
     pub end: u64,
-    pub account: Account,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow, Clone)]
 pub struct Account {
     pub game_name: String,
     pub api_key: String,
@@ -48,17 +51,13 @@ impl Config {
         Self {
             user: args.user,
             pwd: args.pwd,
-            summoner: args.summoner,
             pg_host: args.host,
             pg_port: args.port,
             pg_db: args.db,
+            summoner: args.summoner,
+            queue_id: args.queue_id,
             start: args.start,
             end: args.end,
-            account: Account {
-                game_name: String::from(""),
-                api_key: String::from(""),
-                tag_line: String::from(""),
-            },
         }
     }
 

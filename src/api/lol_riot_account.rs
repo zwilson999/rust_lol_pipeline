@@ -1,5 +1,4 @@
 use anyhow::{Error, Result};
-use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -12,45 +11,30 @@ pub struct RiotAccount {
 
 #[derive(Debug)]
 pub struct AccountInfoRequest<'b> {
-    pub api_key: &'b str,
     pub game_name: &'b str,
     pub tag_line: &'b str,
+    pub headers: reqwest::header::HeaderMap,
 }
 
 #[allow(dead_code)]
 impl<'b> AccountInfoRequest<'b> {
-    pub fn new(api_key: &'b str, game_name: &'b str, tag_line: &'b str) -> Self {
+    pub fn new(game_name: &'b str, tag_line: &'b str, headers: reqwest::header::HeaderMap) -> Self {
         Self {
-            api_key,
             game_name,
             tag_line,
+            headers,
         }
     }
 
-    fn create_headers(&self) -> HeaderMap {
-        // headers for the API call
-        let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT, "application/json".parse().unwrap());
-        headers.insert(
-            ACCEPT_CHARSET,
-            "application/x-www-form-urlencoded; charset=UTF-8"
-                .parse()
-                .unwrap(),
-        );
-        headers.insert(ACCEPT_LANGUAGE, "en-US,en;q=0.5".parse().unwrap());
-        headers.insert("X-Riot-Token", self.api_key.parse().unwrap());
-        headers
-    }
-
-    pub fn get_blocking(&self) -> Result<reqwest::blocking::Response, Error> {
+    pub async fn get(&self) -> Result<reqwest::Response, Error> {
         // url to get the riot account info with access token
         let url = format!(
             "https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{}/{}",
             self.game_name, self.tag_line
         );
 
-        let client = reqwest::blocking::Client::new();
-        let resp = client.get(url).headers(self.create_headers()).send()?;
+        let client = reqwest::Client::new();
+        let resp = client.get(url).headers(self.headers.clone()).send().await?;
 
         // check status and return appropriate response
         match resp.status() {
@@ -66,6 +50,10 @@ impl<'b> AccountInfoRequest<'b> {
                     "forbidden request. check credentials. status code: {}",
                     resp.status()
                 );
+                return Err(anyhow::anyhow!(err));
+            }
+            reqwest::StatusCode::TOO_MANY_REQUESTS => {
+                let err = format!("too many requests. status code: {}", resp.status());
                 return Err(anyhow::anyhow!(err));
             }
             _ => {

@@ -1,12 +1,29 @@
 mod api;
 mod config;
 mod pipeline;
+mod utils;
 
 use anyhow::{Error, Result};
 use clap::Parser;
 use config::{Config, UserArgs};
 use pipeline::Pipeline;
 use std::time::Instant;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let start = Instant::now();
+    let args = UserArgs::parse();
+
+    let config = Config::build(args);
+    let account = config.get_api_key().await?;
+
+    let pipeline = Pipeline::new(config, account);
+    pipeline.run().await?;
+
+    println!("INFO: Program finished in: {:.2?}", start.elapsed());
+    Ok(())
+}
+
 // use futures::{stream, StreamExt};
 // use postgres::NoTls;
 // use reqwest::header::HeaderMap;
@@ -174,22 +191,3 @@ use std::time::Instant;
 //     println!("{:?}", data);
 //     Ok(data)
 // }
-
-// run query and deserialize it into a struct
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let start = Instant::now();
-    let args = UserArgs::parse();
-
-    let config = Config::build(args);
-    let account = config.get_api_key().await?;
-
-    // create pipeline and run it
-    let pipeline = Pipeline::new(config, account);
-    pipeline.run().await?;
-
-    println!("INFO: Program finished in: {:.2?}", start.elapsed());
-
-    Ok(())
-}
