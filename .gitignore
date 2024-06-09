@@ -2,3 +2,4 @@
 /creds
 *.swp
 /src/archive
+/src/_lib.rs

@@ -1,18 +1,9 @@
 use crate::config::Config;
 use anyhow::{Error, Result};
 use reqwest::header::HeaderMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-#[derive(Deserialize, Debug)]
-pub struct MatchesResponse {
-    pub matches: Vec<Match>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Match {
-    pub match_id: String,
-}
+use tokio::time::{sleep, Duration};
 
 #[derive(Serialize, Debug)]
 pub struct MatchesQuery<'b> {
@@ -112,48 +103,58 @@ impl<'b> MatchesRequest<'b> {
             puuid = self.puuid
         );
 
-        let resp = client
-            .get(url)
-            .headers(headers.clone())
-            .query(&self.query)
-            .send()
-            .await?;
+        loop {
+            let resp = client
+                .get(&url)
+                .headers(headers.clone())
+                .query(&self.query)
+                .send()
+                .await?;
 
-        // check status and return appropriate response
-        match resp.status() {
-            reqwest::StatusCode::OK => {
-                let data = resp.json::<Vec<String>>().await?;
-                println!("found {} matches", data.len());
-                if data.len() < 100 {
-                    println!("{:?}", &self.query);
+            // check status and return appropriate response
+            match resp.status() {
+                reqwest::StatusCode::OK => {
+                    let data = resp.json::<Vec<String>>().await?;
+                    println!("INFO: found {} matches", data.len());
+                    return Ok(data);
                 }
-                return Ok(data);
-            }
-            reqwest::StatusCode::BAD_REQUEST => {
-                let err = format!("bad status. status code: {}", resp.status());
-                eprintln!("{}", err);
-                return Err(anyhow::anyhow!(err));
-            }
-            reqwest::StatusCode::FORBIDDEN => {
-                let err = format!(
-                    "forbidden request. check credentials. status code: {}",
-                    resp.status()
-                );
-                eprintln!("{}", err);
-                return Err(anyhow::anyhow!(err));
-            }
-            reqwest::StatusCode::TOO_MANY_REQUESTS => {
-                let err = format!("too many requests. status code: {}", resp.status());
-                eprintln!("{}", err);
-                println!("response headers: {:?}", resp.headers());
-                return Err(anyhow::anyhow!(err));
-            }
-            _ => {
-                let err = format!("unsavory request. status code: {}", resp.status());
-                eprintln!("{}", err);
-                return Err(anyhow::anyhow!(err));
-            }
-        };
+                reqwest::StatusCode::BAD_REQUEST => {
+                    let err = format!("ERROR: bad request. status code: {}", resp.status());
+                    panic!("{}", err);
+                }
+                reqwest::StatusCode::FORBIDDEN => {
+                    let err = format!(
+                        "ERROR: forbidden request. check credentials. status code: {}",
+                        resp.status()
+                    );
+                    panic!("{}", err);
+                }
+                reqwest::StatusCode::TOO_MANY_REQUESTS => {
+                    // if for some reason the header cannot be found, default it to 2 minutes (max sleep for rate limits to recover)
+                    let retry_after: &str = resp
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|s| s.to_str().ok())
+                        .unwrap_or("120");
+
+                    println!(
+                        "INFO: rate limit reached. sleeping for {retry_after}s",
+                        retry_after = &retry_after
+                    );
+                    // sleep for retry_after seconds
+                    sleep(Duration::from_secs(
+                        retry_after.parse::<u64>().unwrap_or(120),
+                    ))
+                    .await;
+                    continue;
+                }
+                _ => {
+                    let err = format!("unsavory request. status code: {}", resp.status());
+                    eprintln!("{}", err);
+                    return Err(anyhow::anyhow!(err));
+                }
+            };
+        }
     }
 }
 

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::Semaphore;
 use tokio::time::{interval, Duration};
 
@@ -24,7 +23,6 @@ impl TokenBucket {
             async move {
                 loop {
                     interval.tick().await;
-                    // println!("tick at: {:.2?}", Instant::now());
 
                     // add a token to the bucket if it is not full
                     if sem.available_permits() < capacity {
@@ -38,7 +36,7 @@ impl TokenBucket {
     }
 
     pub async fn acquire(&self) {
-        // this can return an err if the sem is closed, but we never  close it, so this shouldn't happen
+        // this can return an err if the sem is closed, but we never close it, so this shouldn't happen
         let permit = self.sem.acquire().await.unwrap();
 
         // to avoid releasing the permit back to the sem, we use the forget method

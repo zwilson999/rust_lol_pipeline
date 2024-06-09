@@ -1,7 +1,8 @@
-mod api;
-mod config;
-mod pipeline;
-mod utils;
+pub mod api;
+pub mod config;
+pub mod db;
+pub mod pipeline;
+pub mod utils;
 
 use anyhow::{Error, Result};
 use clap::Parser;

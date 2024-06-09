@@ -1,6 +1,7 @@
 use crate::api::lol_match_info::MatchResponse;
 use anyhow::{Error, Result};
 use reqwest::header::HeaderMap;
+use tokio::time::{sleep, Duration};
 
 #[derive(Debug)]
 pub struct MatchRequest {
@@ -22,36 +23,56 @@ impl MatchRequest {
             "https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}",
             match_id = self.match_id
         );
-        let resp = client.get(url).headers(headers).send().await?;
+        loop {
+            let resp = client.get(&url).headers(headers.clone()).send().await?;
 
-        // check status and return appropriate response
-        match resp.status() {
-            reqwest::StatusCode::OK => {
-                let data = resp.json::<MatchResponse>().await.unwrap_or_else(|err| {
-                    println!("match: {} had errors", &self.match_id);
-                    panic!("{err}");
-                });
-                return Ok(data);
+            // check status and return appropriate response
+            match resp.status() {
+                reqwest::StatusCode::OK => {
+                    let data = resp.json::<MatchResponse>().await.unwrap_or_else(|err| {
+                        panic!(
+                            "ERROR: match: {} had errors with deserializing to JSON, err: {err}",
+                            &self.match_id
+                        );
+                    });
+                    return Ok(data);
+                }
+                reqwest::StatusCode::BAD_REQUEST => {
+                    let err = format!("ERROR: bad request. status code: {}", resp.status());
+                    panic!("{}", err);
+                }
+                reqwest::StatusCode::FORBIDDEN => {
+                    let err = format!(
+                        "ERROR: forbidden request. check credentials. status code: {}",
+                        resp.status()
+                    );
+                    panic!("{}", err);
+                }
+                reqwest::StatusCode::TOO_MANY_REQUESTS => {
+                    // if for some reason the header cannot be found, default it to 2 minutes (max sleep for rate limits to recover)
+                    let retry_after: &str = resp
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|s| s.to_str().ok())
+                        .unwrap_or("120");
+
+                    println!(
+                        "INFO: rate limit reached. sleeping for {retry_after}s",
+                        retry_after = &retry_after
+                    );
+                    // sleep for retry_after seconds
+                    sleep(Duration::from_secs(
+                        retry_after.parse::<u64>().unwrap_or(120),
+                    ))
+                    .await;
+                    continue;
+                }
+                _ => {
+                    let err = format!("ERROR: unsavory request. status code: {}", resp.status());
+                    println!("{}", err);
+                    return Err(anyhow::anyhow!(err));
+                }
             }
-            reqwest::StatusCode::BAD_REQUEST => {
-                let err = format!("bad status. status code: {}", resp.status());
-                return Err(anyhow::anyhow!(err));
-            }
-            reqwest::StatusCode::FORBIDDEN => {
-                let err = format!(
-                    "forbidden request. check credentials. status code: {}",
-                    resp.status()
-                );
-                return Err(anyhow::anyhow!(err));
-            }
-            reqwest::StatusCode::TOO_MANY_REQUESTS => {
-                let err = format!("too many requests. status code: {}", resp.status());
-                return Err(anyhow::anyhow!(err));
-            }
-            _ => {
-                let err = format!("unsavory request. status code: {}", resp.status());
-                return Err(anyhow::anyhow!(err));
-            }
-        };
+        }
     }
 }

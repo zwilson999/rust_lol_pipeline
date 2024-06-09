@@ -63,9 +63,11 @@ impl Config {
 
     pub async fn get_api_key(&self) -> Result<Account, sqlx::Error> {
         let conn_string = format!(
-            "postgresql://{user}:{pwd}@localhost/league_of_legends",
+            "postgresql://{user}:{pwd}@{host}/{db}",
             user = self.user,
-            pwd = self.pwd
+            pwd = self.pwd,
+            host = self.pg_host,
+            db = self.pg_db,
         );
         let mut conn = PgConnection::connect(&conn_string).await?;
 
