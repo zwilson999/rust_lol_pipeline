@@ -115,7 +115,6 @@ impl<'b> MatchesRequest<'b> {
             match resp.status() {
                 reqwest::StatusCode::OK => {
                     let data = resp.json::<Vec<String>>().await?;
-                    println!("INFO: found {} matches", data.len());
                     return Ok(data);
                 }
                 reqwest::StatusCode::BAD_REQUEST => {

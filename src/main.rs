@@ -18,8 +18,11 @@ async fn main() -> Result<(), Error> {
     let config = Config::build(args);
     let account = config.get_api_key().await?;
 
+    // run pipeline and check errors
     let pipeline = Pipeline::new(config, account);
-    pipeline.run().await?;
+    pipeline.run().await.unwrap_or_else(|err| {
+        println!("ERROR: pipeline failed with err: {err}");
+    });
 
     println!("INFO: Program finished in: {:.2?}", start.elapsed());
     Ok(())

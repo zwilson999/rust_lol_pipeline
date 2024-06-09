@@ -50,7 +50,7 @@ impl Postgres {
         .bind(&response.info.queue_id)
         .bind(&response.info.game_type)
         .bind(&response.metadata.match_id)
-        .bind(serde_json::to_string(&response).unwrap())
+        .bind(sqlx::types::Json(&response))
         .bind(self.load_id.to_string())
         .execute(&pool)
         .await?;

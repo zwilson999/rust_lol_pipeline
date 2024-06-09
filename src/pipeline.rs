@@ -20,13 +20,13 @@ pub struct Pipeline /*<'a>*/ {
     pub account: Account,
     pub load_id: String,
     pub headers: HeaderMap,
-    pub global_token_bucket: Arc<TokenBucket>,
+    // pub global_token_bucket: Arc<TokenBucket>,
     pub local_token_bucket: Arc<TokenBucket>,
 }
 
 // global request limits are 100 requests per 120 seconds
-static GLOBAL_REQUEST_LIMIT: usize = 100; // 100 requests
-static GLOBAL_REQUEST_INTERVAL: f32 = 120.0; // 2 minutes
+// static GLOBAL_REQUEST_LIMIT: usize = 100; // 100 requests
+// static GLOBAL_REQUEST_INTERVAL: f32 = 120.0; // 2 minutes
 
 static LOCAL_REQUEST_LIMIT: usize = 20; // 20 requests
 static LOCAL_REQUEST_INTERVAL: f32 = 1.0; // 1 second
@@ -46,8 +46,8 @@ impl Pipeline {
         headers.insert("X-Riot-Token", account.api_key.parse().unwrap());
 
         // construct pipeline global rate limit token bucket
-        let global_update_interval =
-            Duration::from_secs_f32(GLOBAL_REQUEST_INTERVAL / GLOBAL_REQUEST_LIMIT as f32);
+        // let global_update_interval =
+        //     Duration::from_secs_f32(GLOBAL_REQUEST_INTERVAL / GLOBAL_REQUEST_LIMIT as f32);
 
         let local_update_interval =
             Duration::from_secs_f32(LOCAL_REQUEST_INTERVAL / LOCAL_REQUEST_LIMIT as f32);
@@ -57,10 +57,10 @@ impl Pipeline {
             account,
             load_id: Uuid::new_v4().to_string(),
             headers,
-            global_token_bucket: Arc::new(TokenBucket::new(
-                global_update_interval,
-                GLOBAL_REQUEST_LIMIT,
-            )),
+            // global_token_bucket: Arc::new(TokenBucket::new(
+            //     global_update_interval,
+            //     GLOBAL_REQUEST_LIMIT,
+            // )),
             local_token_bucket: Arc::new(TokenBucket::new(
                 local_update_interval,
                 LOCAL_REQUEST_LIMIT,
@@ -80,8 +80,7 @@ impl Pipeline {
 
     // make a request to get account information from API
     async fn get_account_info(&self) -> Result<RiotAccount, Error> {
-        // acquire global semaphore
-        self.global_token_bucket.acquire().await;
+        let start = Instant::now();
 
         // make reqest
         let req = AccountInfoRequest::new(
@@ -90,9 +89,7 @@ impl Pipeline {
             self.headers.clone(),
         );
 
-        let start = Instant::now();
         self.local_token_bucket.acquire().await;
-        self.global_token_bucket.acquire().await;
         let resp = match req.get().await {
             Ok(resp) => resp,
             Err(err) => {
@@ -117,7 +114,9 @@ impl Pipeline {
                 let client = client.clone();
                 let puuid = puuid.clone();
                 let config = self.config.clone();
+                let local_bucket = self.local_token_bucket.clone();
                 async move {
+                    local_bucket.acquire().await;
                     let req = MatchesRequest::new(config, puuid, Some(idx));
                     let resp = (req.get(client, self.headers.clone()).await).ok()?;
                     Some(resp)
@@ -129,10 +128,12 @@ impl Pipeline {
             })
             // make our Vec<String> responses into a single stream
             .flat_map(stream::iter)
-            .flat_map_unordered(15, |m| {
+            .flat_map_unordered(20, |m| {
                 let match_id = m.clone();
                 let client = client.clone();
+                let local_bucket = self.local_token_bucket.clone();
                 Box::pin(stream::once(async move {
+                    local_bucket.acquire().await;
                     let match_request = MatchRequest::new(match_id.to_string());
                     let mut resp = (match_request.get(client, self.headers.clone()).await).ok()?;
 
@@ -148,9 +149,14 @@ impl Pipeline {
         let pg = Postgres::new(&self.config, self.load_id.to_string());
         let pg_pool = pg.get_pool().await?;
         while let Some(m) = s.next().await {
+            println!("{:?}", m);
             let pg_pool = pg_pool.clone();
             let pg = pg.clone();
-            let _ = pg.load(&m.unwrap(), pg_pool).await?;
+            let _ = pg
+                .load(&m.unwrap(), pg_pool)
+                .await
+                .unwrap_or_else(|err| println!("ERROR: could not load to postgres. err: {err}"));
+            println!("processed {i}th match");
             i += 1;
         }
         println!("INFO: ingested {} matches total", i);

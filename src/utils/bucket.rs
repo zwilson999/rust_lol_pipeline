@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Semaphore;
 use tokio::time::{interval, Duration};
 
@@ -23,6 +24,7 @@ impl TokenBucket {
             async move {
                 loop {
                     interval.tick().await;
+                    println!("tick at {:?}", Instant::now());
 
                     // add a token to the bucket if it is not full
                     if sem.available_permits() < capacity {
