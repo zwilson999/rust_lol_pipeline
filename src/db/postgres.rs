@@ -21,8 +21,6 @@ impl Postgres {
                 db = config.pg_db,
             ),
             load_id,
-            // raw_tbl,
-            // flat_tbl,
         }
     }
 
@@ -50,10 +48,15 @@ impl Postgres {
         .bind(&response.info.queue_id)
         .bind(&response.info.game_type)
         .bind(&response.metadata.match_id)
-        .bind(sqlx::types::Json(&response))
+        .bind(sqlx::types::Json(&response)) // cast to JSON type for postgres compatibility
         .bind(self.load_id.to_string())
         .execute(&pool)
         .await?;
+
+        println!(
+            "INFO: successfully loaded {match_id} to postgres",
+            match_id = response.match_id
+        );
 
         Ok(())
     }

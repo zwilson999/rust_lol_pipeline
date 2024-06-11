@@ -29,24 +29,26 @@ impl MatchRequest {
             // check status and return appropriate response
             match resp.status() {
                 reqwest::StatusCode::OK => {
-                    let data = resp.json::<MatchResponse>().await.unwrap_or_else(|err| {
+                    let mut data = resp.json::<MatchResponse>().await.unwrap_or_else(|err| {
                         panic!(
-                            "ERROR: match: {} had errors with deserializing to JSON, err: {err}",
+                            "ERROR: match {} had errors with deserializing to JSON, err: {err}",
                             &self.match_id
                         );
                     });
+                    data.match_id = self.match_id.clone();
                     return Ok(data);
                 }
                 reqwest::StatusCode::BAD_REQUEST => {
-                    let err = format!("ERROR: bad request. status code: {}", resp.status());
-                    panic!("{}", err);
+                    panic!(
+                        "ERROR: match {} received BAD_REQUEST status.",
+                        &self.match_id
+                    );
                 }
                 reqwest::StatusCode::FORBIDDEN => {
-                    let err = format!(
-                        "ERROR: forbidden request. check credentials. status code: {}",
-                        resp.status()
+                    panic!(
+                        "ERROR: forbidden request for match {}. check credentials and try again.",
+                        &self.match_id,
                     );
-                    panic!("{}", err);
                 }
                 reqwest::StatusCode::TOO_MANY_REQUESTS => {
                     // if for some reason the header cannot be found, default it to 2 minutes (max sleep for rate limits to recover)
@@ -57,9 +59,10 @@ impl MatchRequest {
                         .unwrap_or("120");
 
                     println!(
-                        "INFO: rate limit reached. sleeping for {retry_after}s",
+                        "INFO: rate limit reached when querying a single match. sleeping for {retry_after}s",
                         retry_after = &retry_after
                     );
+
                     // sleep for retry_after seconds
                     sleep(Duration::from_secs(
                         retry_after.parse::<u64>().unwrap_or(120),

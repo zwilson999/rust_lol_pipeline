@@ -2,6 +2,7 @@ use crate::config::Config;
 use anyhow::{Error, Result};
 use reqwest::header::HeaderMap;
 use serde::Serialize;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
 
@@ -111,6 +112,11 @@ impl<'b> MatchesRequest<'b> {
                 .send()
                 .await?;
 
+            println!(
+                "INFO: response headers from matches request: {:?}",
+                resp.headers().get("X-App-Rate-Limit-Count")
+            );
+
             // check status and return appropriate response
             match resp.status() {
                 reqwest::StatusCode::OK => {
@@ -137,7 +143,7 @@ impl<'b> MatchesRequest<'b> {
                         .unwrap_or("120");
 
                     println!(
-                        "INFO: rate limit reached. sleeping for {retry_after}s",
+                        "INFO: rate limit reached when querying matches. sleeping for {retry_after}s",
                         retry_after = &retry_after
                     );
                     // sleep for retry_after seconds
