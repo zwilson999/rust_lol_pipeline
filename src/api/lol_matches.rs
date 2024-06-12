@@ -2,7 +2,6 @@ use crate::config::Config;
 use anyhow::{Error, Result};
 use reqwest::header::HeaderMap;
 use serde::Serialize;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
 
@@ -111,11 +110,6 @@ impl<'b> MatchesRequest<'b> {
                 .query(&self.query)
                 .send()
                 .await?;
-
-            println!(
-                "INFO: response headers from matches request: {:?}",
-                resp.headers().get("X-App-Rate-Limit-Count")
-            );
 
             // check status and return appropriate response
             match resp.status() {

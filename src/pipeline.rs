@@ -9,7 +9,6 @@ use anyhow::{Error, Result};
 use core::pin::pin;
 use futures::stream::{self as stream, StreamExt};
 use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_CHARSET, ACCEPT_LANGUAGE};
-use tokio::sync::Semaphore;
 use tokio::time::{sleep, Duration, Instant};
 use uuid::Uuid;
 
@@ -104,8 +103,8 @@ impl Pipeline {
                 let puuid = puuid.clone();
                 let config = self.config.clone();
                 async move {
+                    // sleep async 1s before making request
                     sleep(Duration::from_secs_f32(1.0)).await;
-                    // increment atomic counter
                     let req = MatchesRequest::new(config, puuid, Some(idx));
                     let resp = req.get(client, self.headers.clone()).await.ok()?;
                     Some(resp)
@@ -121,6 +120,7 @@ impl Pipeline {
                 let match_id = m.clone();
                 let client = client.clone();
                 Box::pin(stream::once(async move {
+                    // sleep async 1s before making request
                     sleep(Duration::from_secs_f32(1.0)).await;
                     let match_request = MatchRequest::new(match_id.to_string());
                     let mut resp = match_request.get(client, self.headers.clone()).await.ok()?;
