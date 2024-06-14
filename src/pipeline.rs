@@ -46,11 +46,6 @@ impl Pipeline {
             account,
             load_id: Uuid::new_v4().to_string(),
             headers,
-            // local_token_bucket: Arc::new(TokenBucket::new(
-            //     local_update_interval,
-            //     LOCAL_REQUEST_LIMIT,
-            // )),
-            // sem: Arc::new(Semaphore::new(20)),
         }
     }
 
