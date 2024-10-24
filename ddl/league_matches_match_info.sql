@@ -25,6 +25,7 @@ CREATE TABLE league_of_legends.flat.league_matches_match_outcomes (
 
 
 -- Example flattening query
+/*
 SELECT
 	a.account_name,
 	a.match_id,
@@ -49,4 +50,5 @@ FROM
 	league_of_legends.raw.league_matches AS a,
 	jsonb_path_query(a.response_json, '$.info') AS info
 WHERE
-	match_id = 'NA1_5000712282';
+	match_id = '';
+*/

@@ -12,6 +12,7 @@ CREATE TABLE league_of_legends.flat.league_matches_ban_picks (
 );
 
 -- Example query
+/*
 SELECT
 	a.account_name,
 	a.match_id,
@@ -25,4 +26,5 @@ FROM
 	jsonb_array_elements(teams) AS teams_arr,
 	jsonb_array_elements(teams_arr->'bans') AS bans
 WHERE
-	match_id = 'NA1_5000712282';
+	match_id = '';
+*/
